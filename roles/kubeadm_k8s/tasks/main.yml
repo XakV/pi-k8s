@@ -1,0 +1,77 @@
+---
+- name: install nftables/iptables stuff
+  ansible.builtin.dnf:
+    name: ['iptables-nft', 'iptables-services']
+    state: present
+
+- name: add netfilter module
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter 
+
+- name: add netfilter module to module config
+  ansible.builtin.blockinfile:
+    path: /etc/modules-load.d/90-k8s.conf
+    block: |
+      'br_netfilter'
+      'overlay'
+    create: yes
+
+- name: set netfilter sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    sysctl_file: /etc/sysctl.d/90-k8s.conf
+  loop:
+    - { 'name': 'net.bridge.bridge-nf-call-iptables', 'value': 1 }
+    - { 'name': 'net.bridge.bridge-nf-call-ip6tables', 'value': 1 }
+    - { 'name': 'net.ipv4.ip_forward', 'value': 1 }
+
+- name: disable firewalld and enable iptables
+  ansible.builtin.systemd:
+    name: "{{ item.name }}"
+    state: "{{ item.state }}"
+    enabled: "{{ item.enabled }}"
+    daemon_reload: yes
+  loop:
+    - { 'name': 'firewalld', 'enabled': 'no', 'state': 'stopped' }
+    - { 'name': 'iptables', 'enabled': 'yes', 'state': 'started' }
+
+- name: write iptables allow rules
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ item }}"
+    ctstate: NEW
+    jump: ACCEPT
+  loop: ['22', '6443', '2379', '2380', '10250', '10257', '10259', '30000:32767']
+
+- name: reset cri-o module
+  ansible.builtin.command: 'dnf module reset cri-o -y'
+
+- name: enable cri-o module
+  ansible.builtin.command: 'dnf module enable cri-o:1.22 -y'
+
+- name: install cri-o module
+  ansible.builtin.dnf:
+    name: 'cri-o'
+    state: present
+
+- name: install tooling
+  ansible.builtin.dnf:
+    name: kubectl
+    state: present
+
+- name: start crio
+  ansible.builtin.systemd:
+    name: cri-o
+    state: started
+    enabled: yes
+    daemon-reload: yes
+
+
+  
