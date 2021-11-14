@@ -50,28 +50,25 @@
     jump: ACCEPT
   loop: ['22', '6443', '2379', '2380', '10250', '10257', '10259', '30000:32767']
 
-- name: reset cri-o module
-  ansible.builtin.command: 'dnf module reset cri-o -y'
+- name: copy k8s repo file
+  ansible.builtin.copy:
+    src: kubernetes.repo
+    dest: /etc/yum.repos.d/kubernetes.repo
+    owner: root
+    group: root
+    mode: 0644
 
-- name: enable cri-o module
-  ansible.builtin.command: 'dnf module enable cri-o:1.22 -y'
-
-- name: install cri-o module
+- name: install containerd and kube things
   ansible.builtin.dnf:
-    name: 'cri-o'
+    name: ['containerd', 'kubeadm', 'kubectl', 'kubelet']
     state: present
+    disable_excludes: all
+    update_cache: yes
+    allowerasing: yes
 
-- name: install tooling
-  ansible.builtin.dnf:
-    name: kubectl
-    state: present
-
-- name: start crio
+- name: start containerd
   ansible.builtin.systemd:
-    name: cri-o
+    name: containerd
     state: started
     enabled: yes
     daemon-reload: yes
-
-
-  
